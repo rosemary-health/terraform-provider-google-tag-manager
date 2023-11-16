@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"terraform-provider-google-tag-manager/internal/api"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -47,19 +46,19 @@ func (p *gtmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 			"workspace_name": schema.StringAttribute{
 				Description: "Workspace name.",
 				Required:    true},
-			"max_api_queries_per_minute": schema.Int64Attribute{
-				Description: "Maximum number of API queries per minute.",
+			"retry_limit": schema.Int64Attribute{
+				Description: "Number of times to retry requests when rate-limited before giving up.",
 				Optional:    true},
 		},
 	}
 }
 
 type gtmProviderModel struct {
-	CredentialFile         types.String `tfsdk:"credential_file"`
-	AccountId              types.String `tfsdk:"account_id"`
-	ContainerId            types.String `tfsdk:"container_id"`
-	WorkspaceName          types.String `tfsdk:"workspace_name"`
-	MaxApiQueriesPerMinute types.Int64  `tfsdk:"max_api_queries_per_minute"`
+	CredentialFile types.String `tfsdk:"credential_file"`
+	AccountId      types.String `tfsdk:"account_id"`
+	ContainerId    types.String `tfsdk:"container_id"`
+	WorkspaceName  types.String `tfsdk:"workspace_name"`
+	RetryLimit     types.Int64  `tfsdk:"retry_limit"`
 }
 
 // Configure prepares an API client for data sources and resources.
@@ -75,18 +74,17 @@ func (p *gtmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		return
 	}
 
-	var maxApiQueriesPerMinute = config.MaxApiQueriesPerMinute.ValueInt64()
-	var waitingTimeBeforeEachQuery time.Duration = 0
-	if maxApiQueriesPerMinute > 0 {
-		waitingTimeBeforeEachQuery = time.Duration(int64(time.Minute) / maxApiQueriesPerMinute)
+	var retryLimit = 10
+	if !config.RetryLimit.IsNull() && !config.RetryLimit.IsUnknown() {
+		retryLimit = int(config.RetryLimit.ValueInt64())
 	}
 
 	client, err := api.NewClientInWorkspace(&api.ClientInWorkspaceOptions{
 		ClientOptions: &api.ClientOptions{
-			CredentialFile:             config.CredentialFile.ValueString(),
-			AccountId:                  config.AccountId.ValueString(),
-			ContainerId:                config.ContainerId.ValueString(),
-			WaitingTimeBeforeEachQuery: waitingTimeBeforeEachQuery,
+			CredentialFile: config.CredentialFile.ValueString(),
+			AccountId:      config.AccountId.ValueString(),
+			ContainerId:    config.ContainerId.ValueString(),
+			RetryLimit:     retryLimit,
 		},
 		WorkspaceName: config.WorkspaceName.ValueString(),
 	})

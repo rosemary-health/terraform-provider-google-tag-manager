@@ -18,7 +18,7 @@ provider "gtm" {
   account_id                 = "6105084028"
   container_id               = "119458552"
   workspace_name             = "my-workspace"
-  max_api_queries_per_minute = 15
+  retry_limit                = 10
 }
 ```
 
@@ -34,4 +34,4 @@ provider "gtm" {
 
 ### Optional
 
-- `max_api_queries_per_minute` (Number) Maximum number of API queries per minute.
+- `retry_limit` (Number) Number of times to retry requests when rate-limited before giving up.

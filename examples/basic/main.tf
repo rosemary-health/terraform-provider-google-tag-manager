@@ -12,7 +12,7 @@ provider "gtm" {
   account_id                 = "6105084028"
   container_id               = "119458552"
   workspace_name             = "my-workspace"
-  max_api_queries_per_minute = 15
+  retry_limitalias           = 10
 }
 
 resource "gtm_variable" "test_variable" {

@@ -10,16 +10,15 @@ import (
 	"google.golang.org/api/tagmanager/v2"
 )
 
-var (
-	_ resource.ResourceWithConfigure = &tagResource{}
-)
-
-func NewTagResource() resource.Resource {
-	return &tagResource{}
-}
+// Interace adoption checks
+var _ resource.ResourceWithConfigure = (*tagResource)(nil)
 
 type tagResource struct {
 	client *api.ClientInWorkspace
+}
+
+func NewTagResource() resource.Resource {
+	return &tagResource{}
 }
 
 // Configure adds the provider configured client to the resource.
@@ -71,6 +70,105 @@ type resourceTagModel struct {
 	FiringTriggerId []types.String           `tfsdk:"firing_trigger_id"`
 }
 
+// Create creates the resource and sets the initial Terraform state.
+func (r *tagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan resourceTagModel
+
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tag, err := r.client.CreateTag(toApiTag(plan))
+	if err != nil {
+		resp.Diagnostics.AddError("Error Creating Tag", err.Error())
+		return
+	}
+
+	plan.Id = types.StringValue(tag.TagId)
+
+	diags = resp.State.Set(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+}
+
+// Read refreshes the Terraform state with the latest data.
+func (r *tagResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state resourceTagModel
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tag, err := r.client.Tag(state.Id.ValueString())
+	if err == api.ErrNotExist {
+		resp.State.RemoveResource(ctx)
+		return
+	} else if err != nil {
+		resp.Diagnostics.AddError("Error Reading Tag", err.Error())
+		return
+	}
+
+	var resource = toResourceTag(tag)
+
+	diags = resp.State.Set(ctx, &resource)
+	resp.Diagnostics.Append(diags...)
+}
+
+// Update updates the resource and sets the updated Terraform state on success.
+func (r *tagResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan, state resourceTagModel
+
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tag, err := r.client.UpdateTag(state.Id.ValueString(), toApiTag(plan))
+	if err != nil {
+		resp.Diagnostics.AddError("Error Updating Tag", err.Error())
+		return
+	}
+
+	plan.Id = types.StringValue(tag.TagId)
+
+	diags = resp.State.Set(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+}
+
+// Delete deletes the resource and removes the Terraform state on success.
+func (r *tagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state resourceTagModel
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if state.Id.IsNull() || state.Id.IsUnknown() {
+		resp.Diagnostics.AddError("Invalid Id state", state.Id.String())
+	}
+
+	err := r.client.DeleteTag(state.Id.ValueString())
+	if err == api.ErrNotExist {
+		return
+	} else if err != nil {
+		resp.Diagnostics.AddError("Error Deleting Tag", err.Error())
+		return
+	}
+}
+
 // Equal compares the two models and returns true if they are equal.
 func (m resourceTagModel) Equal(o resourceTagModel) bool {
 	if !m.Name.Equal(o.Name) ||
@@ -117,96 +215,5 @@ func toApiTag(resource resourceTagModel) *tagmanager.Tag {
 		Notes:           resource.Notes.ValueString(),
 		Parameter:       toApiParameter(resource.Parameter),
 		FiringTriggerId: unwrapStringArray(resource.FiringTriggerId),
-	}
-}
-
-// Create creates the resource and sets the initial Terraform state.
-func (r *tagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan resourceTagModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	tag, err := r.client.CreateTag(toApiTag(plan))
-	if err != nil {
-		resp.Diagnostics.AddError("Error Creating Tag", err.Error())
-		return
-	}
-
-	diags = resp.State.Set(ctx, toResourceTag(tag))
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-}
-
-// Read refreshes the Terraform state with the latest data.
-func (r *tagResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state resourceTagModel
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	tag, err := r.client.Tag(state.Id.ValueString())
-	if err == api.ErrNotExist {
-		resp.State.RemoveResource(ctx)
-		return
-	} else if err != nil {
-		resp.Diagnostics.AddError("Error Reading Tag", err.Error())
-		return
-	}
-
-	diags = resp.State.Set(ctx, toResourceTag(tag))
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-}
-
-// Update updates the resource and sets the updated Terraform state on success.
-func (r *tagResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state resourceTagModel
-
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	tag, err := r.client.UpdateTag(state.Id.ValueString(), toApiTag(plan))
-	if err != nil {
-		resp.Diagnostics.AddError("Error Updating Tag", err.Error())
-		return
-	}
-
-	diags = resp.State.Set(ctx, toResourceTag(tag))
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-}
-
-// Delete deletes the resource and removes the Terraform state on success.
-func (r *tagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state resourceTagModel
-
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	err := r.client.DeleteTag(state.Id.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error Deleting Tag", err.Error())
-		return
 	}
 }
